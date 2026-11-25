@@ -20,7 +20,7 @@ Cette architecture sans serveur applicatif n'apporte ni autorité indépendante 
 
 ## Déploiement GitHub Pages
 
-Le workflow `.github/workflows/pages.yml` publie automatiquement le contenu du dépôt sur GitHub Pages à chaque push sur `main` (et peut être lancé manuellement). Dans les paramètres du dépôt, sélectionnez **Settings → Pages → Build and deployment → GitHub Actions**. Une fois le workflow réussi, l'adresse sera `https://<propriétaire>.github.io/<nom-du-dépôt>/`. Ce dépôt ne peut pas annoncer une URL publique tant qu'un déploiement réel n'a pas été effectué et vérifié.
+Le workflow `.github/workflows/pages.yml` publie automatiquement le contenu du dépôt à chaque push sur `main` ou sur la branche de ce jeu (et peut être lancé manuellement). Dans les paramètres du dépôt, sélectionnez **Settings → Pages → Build and deployment → GitHub Actions**. GitHub Pages exige un dépôt public sur les offres gratuites ; pour publier ce dépôt privé, il faut une offre GitHub qui autorise Pages pour les dépôts privés. Une fois Pages activé et le workflow réussi, l'adresse sera `https://<propriétaire>.github.io/<nom-du-dépôt>/`. Ne considérez pas cette adresse comme active tant qu'un déploiement réel n'a pas réussi.
 
 ## Vérifications
 
