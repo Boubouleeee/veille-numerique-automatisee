@@ -51,6 +51,8 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
 .orbit-two { bottom: -420px; left: -260px; width: 700px; height: 700px; }
 
 .game-screen { position: relative; height: 100dvh; min-height: 400px; overflow: hidden; background: #101522; }
+.game-screen.level-up-flash::after { position: absolute; z-index: 4; inset: 0; border: 3px solid #d3ff6a99; background: #d3ff6a0a; content: ""; pointer-events: none; animation: level-flash .65s ease-out forwards; }
+@keyframes level-flash { from { opacity: 1; } to { opacity: 0; } }
 #arena { display: block; width: 100%; height: 100%; touch-action: none; }
 .game-top { position: absolute; z-index: 2; top: 0; left: 0; right: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 24px; pointer-events: none; }
 .game-top > * { pointer-events: auto; }
@@ -61,7 +63,7 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
 .copy-button, .leave-button { padding: 5px 8px; color: #b5c0d0; font-size: 10px; background: #ffffff0a; border: 1px solid #ffffff18; border-radius: 5px; }
 .copy-button:hover, .leave-button:hover { color: white; background: #ffffff16; }
 .leave-button { padding: 8px 11px; font-size: 11px; }
-.hud { position: absolute; top: 82px; left: 50%; display: flex; align-items: center; gap: 16px; width: min(630px, calc(100% - 32px)); padding: 13px 17px; transform: translateX(-50%); border: 1px solid #ffffff15; border-radius: 12px; background: #151c2dcc; backdrop-filter: blur(8px); }
+.hud { position: absolute; top: 82px; left: 50%; display: flex; align-items: center; gap: 16px; width: min(790px, calc(100% - 32px)); padding: 13px 17px; transform: translateX(-50%); border: 1px solid #ffffff15; border-radius: 12px; background: #151c2dcc; backdrop-filter: blur(8px); }
 .hud-stat { display: grid; gap: 1px; min-width: 40px; }
 .hud-stat strong { font-size: 18px; }
 .hud-label { font-size: 8px; white-space: nowrap; }
@@ -69,6 +71,7 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
 .xp-track, .health-track { overflow: hidden; height: 5px; border-radius: 8px; background: #343c4d; }
 .xp-bar { height: 100%; width: 0; background: var(--lime); transition: width .2s; }
 #xp-text { display: block; margin-top: 5px; color: #9ca6b7; font: 9px "DM Mono", monospace; text-align: center; }
+.hud-class { max-width: 118px; overflow: hidden; color: #d3ff6a; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .health-wrap { position: absolute; bottom: 56px; left: 50%; display: flex; align-items: center; gap: 10px; width: min(290px, calc(100% - 44px)); padding: 10px 12px; transform: translateX(-50%); background: #151c2dcc; border: 1px solid #ffffff15; border-radius: 9px; }
 .health-track { flex: 1; }
 .health-bar { height: 100%; width: 100%; background: #ff6b7b; transition: width .2s; }
@@ -77,17 +80,33 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
 .game-controls { position: absolute; bottom: 19px; left: 50%; width: min(600px, calc(100% - 32px)); transform: translateX(-50%); color: #aab3c2; font-size: 10px; line-height: 1.6; text-align: center; }
 .game-controls span { padding: 0 4px; color: #667187; }
 .game-message { position: absolute; top: 155px; left: 50%; transform: translateX(-50%); padding: 6px 12px; color: #d5deec; font-size: 11px; text-align: center; }
+.ability-bar { position: absolute; z-index: 3; bottom: 88px; left: 50%; display: flex; justify-content: center; gap: 5px; max-width: calc(100% - 24px); transform: translateX(-50%); }
+.ability-button { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6px; min-width: 70px; padding: 6px 8px; color: #e8ebf3; font-size: 9px; text-align: left; background: #151c2de8; border: 1px solid #ffffff20; border-radius: 8px; }
+.ability-button:hover:not(:disabled), .ability-button:focus-visible { border-color: var(--mint); outline: none; }
+.ability-button:disabled { opacity: .48; cursor: not-allowed; }
+.ability-key { grid-row: span 2; display: grid; place-items: center; width: 20px; height: 20px; color: #122018; font: 700 10px "DM Mono", monospace; background: var(--mint); border-radius: 5px; }
+.ability-cooldown { color: #aab3c1; font: 9px "DM Mono", monospace; }
 .touch-pad { display: none; }
 .overlay { position: absolute; z-index: 5; inset: 0; display: grid; place-items: center; padding: 18px; background: #090d17b8; backdrop-filter: blur(7px); }
 .overlay[hidden] { display: none; }
-.dialog-card { width: min(100%, 600px); padding: clamp(24px, 5vw, 42px); border: 1px solid #ffffff1a; border-radius: 18px; background: var(--panel); box-shadow: 0 25px 90px #0008; }
+.dialog-card { width: min(100%, 900px); max-height: min(90dvh, 860px); overflow: auto; padding: clamp(24px, 5vw, 42px); border: 1px solid #ffffff1a; border-radius: 18px; background: var(--panel); box-shadow: 0 25px 90px #0008; }
 .dialog-card h2 { margin: 10px 0 6px; font-size: clamp(23px, 5vw, 34px); letter-spacing: -.04em; }
 .dialog-card > p { margin: 0 0 21px; color: #aeb7c7; font-size: 12px; }
-.upgrade-options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.upgrade-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .upgrade-choice { padding: 15px; color: var(--ink); text-align: left; background: #20283a; border: 1px solid #ffffff18; border-radius: 10px; }
 .upgrade-choice:hover, .upgrade-choice:focus-visible { border-color: var(--mint); background: #253344; outline: none; }
 .upgrade-choice strong { display: block; margin-bottom: 5px; color: var(--mint); font-size: 13px; }
 .upgrade-choice span { color: #aab3c1; font-size: 11px; line-height: 1.5; }
+.upgrade-choice.stat-choice { min-height: 112px; }
+.upgrade-choice strong span { float: right; color: #d3ff6a; font: 10px "DM Mono", monospace; }
+.stat-pips { display: flex; gap: 3px; margin-top: 9px; }
+.stat-pips i { width: 11px; height: 4px; background: #40495a; border-radius: 4px; }
+.stat-pips i.filled { background: var(--mint); }
+.evolution-choice { display: grid; grid-template-columns: 35px 1fr; column-gap: 9px; min-height: 126px; }
+.evolution-choice strong, .evolution-choice .evolution-branch, .evolution-choice > span:not(.evolution-glyph) { grid-column: 2; }
+.evolution-choice .evolution-glyph { grid-column: 1; grid-row: 1 / span 5; align-self: start; color: var(--lime); font-size: 26px; }
+.evolution-choice .evolution-branch { color: var(--mint); font: 9px "DM Mono", monospace; text-transform: uppercase; }
+.evolution-choice .class-stats { color: #d3ff6a; font: 9px/1.5 "DM Mono", monospace; }
 .gameover-card { text-align: center; }
 .gameover-card .eyebrow { justify-content: center; }
 .gameover-card .button { margin-top: 12px; }
@@ -104,8 +123,11 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
   .hud-stat strong { font-size: 15px; }
   .hud-label { font-size: 7px; letter-spacing: .08em; }
   .health-wrap { bottom: 50px; }
+  .ability-bar { bottom: 90px; display: grid; grid-template-columns: repeat(4, minmax(66px, 1fr)); width: min(calc(100% - 18px), 360px); gap: 4px; }
+  .ability-button { min-width: 0; padding: 5px 6px; font-size: 8px; }
+  .ability-button .ability-cooldown { font-size: 8px; }
   .game-controls { bottom: 15px; font-size: 9px; }
-  .upgrade-options { grid-template-columns: 1fr; gap: 7px; }
+  .upgrade-options { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
   .upgrade-choice { padding: 12px; }
 }
 @media (pointer: coarse) {
@@ -114,6 +136,7 @@ kbd { display: inline-block; padding: 3px 5px; color: #d7dded; font: 10px "DM Mo
   .touch-aim { right: 24px; }
   .game-controls { bottom: 14px; padding: 0 8px; }
   .health-wrap { bottom: 39px; }
+  .ability-bar { bottom: 84px; }
 }
 @media (max-height: 560px) {
   .home-screen { padding: 12px; }

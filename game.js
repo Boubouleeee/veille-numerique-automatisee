@@ -8,25 +8,15 @@
   const ctx = canvas.getContext("2d");
   const status = $("#home-status");
   const roomInput = $("#room-code");
-  const upgrades = [
-    { key: "rate", minLevel: 1, title: "Cadence éclair", text: "Tir 22 % plus rapide." },
-    { key: "damage", minLevel: 1, title: "Munitions lourdes", text: "Inflige 30 % de dégâts en plus." },
-    { key: "speed", minLevel: 1, title: "Pas vif", text: "Déplacement 16 % plus rapide." },
-    { key: "vitality", minLevel: 1, title: "Cœur solide", text: "+30 vie max. et récupère 30 vie." },
-    { key: "doubleCannons", minLevel: 4, title: "Double canons", text: "Tire deux boulettes à chaque salve." },
-    { key: "rate2", minLevel: 4, title: "Surcadence", text: "Tir 30 % plus rapide." },
-    { key: "damage2", minLevel: 4, title: "Boulettes renforcées", text: "Inflige 45 % de dégâts en plus." },
-    { key: "speed2", minLevel: 4, title: "Turbo", text: "Déplacement 24 % plus rapide." },
-    { key: "vitality2", minLevel: 4, title: "Réserve renforcée", text: "+50 vie max. et récupère 50 vie." },
-    { key: "tripleCannons", minLevel: 8, title: "Triple canons", text: "Ajoute un troisième canon." },
-    { key: "rate3", minLevel: 8, title: "Cadence extrême", text: "Tir 38 % plus rapide." },
-    { key: "damage3", minLevel: 8, title: "Boulettes surpuissantes", text: "Inflige 60 % de dégâts en plus." },
-    { key: "speed3", minLevel: 8, title: "Vitesse supersonique", text: "Déplacement 32 % plus rapide." },
-    { key: "vitality3", minLevel: 8, title: "Cœur colossal", text: "+80 vie max. et récupère 80 vie." }
-  ];
+  const CONFIG = window.GAME_CONFIG;
+  const evolutions = [{ id: "basic", name: "Canon simple", branch: "versatile", level: 1, parents: [], cannons: [{ angle: 0, offset: 0 }], modifiers: {}, pros: "Canon équilibré.", cons: "Aucun bonus spécialisé." }, ...CONFIG.evolutions];
+  const evolutionById = new Map(evolutions.map((item) => [item.id, item]));
+  const statByKey = new Map(CONFIG.stats.map((item) => [item.key, item]));
+  const branchLabels = { offense: "Attaque", defense: "Défense", mobility: "Mobilité", versatile: "Polyvalence" };
+  const modifierLabels = { speed: "Vitesse", maxHp: "Vie max.", damage: "Dégâts", fireRate: "Cadence", bulletSpeed: "Vitesse des tirs", range: "Portée", bulletSize: "Taille des tirs" };
   const colors = ["#a4ffb2", "#ffcb70", "#8bd8ff", "#ff90ab", "#c5a4ff", "#ffe67b", "#78e4d1", "#ffac74"];
   const WORLD = 1800;
-  const MAX_FOOD = 140;
+  const MAX_FOOD = CONFIG.balance.resources.maxCount;
   let game = null;
   let animationId = 0;
   let previousTime = 0;
@@ -67,19 +57,30 @@
     if (animationId) cancelAnimationFrame(animationId);
     animationId = 0;
   };
-  const makePlayer = (id, name, color) => ({
-    id, name, color, x: WORLD / 2 + (Math.random() - .5) * 90, y: WORLD / 2 + (Math.random() - .5) * 90,
-    angle: 0, hp: 100, maxHp: 100, speed: 220, damage: 16, fireRate: .36, fireLeft: .1,
-    xp: 0, level: 1, kills: 0, cannons: 1, alive: true, invulnerable: 0, waitingUpgrade: false, pendingLevels: 0, connected: true
-  });
+  const makePlayer = (id, name, color) => {
+    const player = {
+      id, name, color, x: WORLD / 2 + (Math.random() - .5) * 90, y: WORLD / 2 + (Math.random() - .5) * 90,
+      angle: 0, hp: CONFIG.balance.player.maxHp, maxHp: CONFIG.balance.player.maxHp,
+      speed: CONFIG.balance.player.speed, damage: CONFIG.balance.player.damage,
+      fireRate: CONFIG.balance.player.fireRate, fireLeft: .1,
+      xp: 0, level: 1, kills: 0, cannons: 1, evolution: "basic",
+      stats: Object.fromEntries(CONFIG.stats.map((stat) => [stat.key, 0])), unspentPoints: 0,
+      abilityCooldowns: {}, effects: {}, alive: true, invulnerable: 0,
+      waitingUpgrade: false, pendingLevels: 0, pendingEvolution: false, connected: true
+    };
+    recalculateStats(player);
+    return player;
+  };
   const createGame = ({ mode, code = "", host = false, peer = null }) => {
     game = {
       mode, code, isHost: host, peer, selfId: host || mode === "solo" ? "host" : "",
-      players: new Map(), enemies: [], bullets: [], foods: [], lastFoodSpawn: 0, foodId: 0, lastSpawn: 0, elapsed: 0, spawnId: 0,
+      players: new Map(), enemies: [], bullets: [], foods: [], objects: [], objectId: 0,
+      lastFoodSpawn: 0, lastObjectSpawn: 0, foodId: 0, lastSpawn: 0, elapsed: 0, spawnId: 0,
       snapshotTimer: 0, lastInputSend: 0, connections: new Map(), closed: false, hostPeerId: peerId(code),
       joining: false, gameOver: false, localInput: inputState
     };
-    for (let i = 0; i < MAX_FOOD; i++) game.foods.push(makeFood());
+    for (let i = 0; i < CONFIG.balance.resources.initialCount; i++) game.foods.push(makeFood());
+    for (let i = 0; i < CONFIG.balance.objects.initialCount; i++) game.objects.push(makeObject());
     if (host || mode === "solo") game.players.set("host", makePlayer("host", "Hôte", colors[0]));
     updateRoomLabel();
     $("#gameover-dialog").hidden = true;
@@ -257,7 +258,10 @@
         }
       } else if (message?.type === "upgrade") {
         const player = game.players.get(conn.peer);
-        if (player?.waitingUpgrade) applyUpgrade(player, message.key);
+        if (player?.waitingUpgrade) applyProgressionChoice(player, message.action, message.key);
+      } else if (message?.type === "ability") {
+        const player = game.players.get(conn.peer);
+        if (player?.connected) activateAbility(player, message.id);
       }
     });
     conn.on("close", () => removeConnection(conn.peer));
@@ -311,25 +315,33 @@
       players: [...game.players.values()].map((p) => ({
         id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, angle: p.angle, hp: p.hp, maxHp: p.maxHp,
         xp: p.xp, level: p.level, kills: p.kills, alive: p.alive, waitingUpgrade: p.waitingUpgrade,
-        pendingLevels: p.pendingLevels, connected: p.connected, cannons: p.cannons
+        pendingLevels: p.pendingLevels, connected: p.connected, cannons: p.cannons,
+        evolution: p.evolution, stats: p.stats, unspentPoints: p.unspentPoints,
+        pendingEvolution: p.pendingEvolution, abilityCooldowns: p.abilityCooldowns,
+        effects: p.effects, range: p.range, resistance: p.resistance, penetration: p.penetration,
+        regeneration: p.regeneration, bulletSize: p.bulletSize
       })),
       enemies: game.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y, hp: e.hp, maxHp: e.maxHp, radius: e.radius })),
       bullets: game.bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, enemy: b.enemy, radius: b.radius })),
       foods: game.foods.map((food) => ({ id: food.id, x: food.x, y: food.y, value: food.value })),
+      objects: game.objects.map((object) => ({ id: object.id, x: object.x, y: object.y, hp: object.hp, maxHp: object.maxHp, radius: object.radius })),
       spawnId: game.spawnId
     };
   }
   function mergeSnapshot(state) {
     if (!state || !Array.isArray(state.players)) return;
     game.elapsed = state.elapsed || game.elapsed || 0;
+    const previousSelf = game.players.get(game.selfId);
     for (const p of state.players) game.players.set(p.id, { ...p });
     for (const id of [...game.players.keys()]) if (!state.players.some((p) => p.id === id)) game.players.delete(id);
     game.enemies = Array.isArray(state.enemies) ? state.enemies : [];
     game.bullets = Array.isArray(state.bullets) ? state.bullets : [];
     game.foods = Array.isArray(state.foods) ? state.foods : [];
+    game.objects = Array.isArray(state.objects) ? state.objects : [];
     game.spawnId = state.spawnId || 0;
     const self = game.players.get(game.selfId);
     if (self) {
+      if (previousSelf && (self.level > previousSelf.level || self.evolution !== previousSelf.evolution)) flashLevelUp();
       if (!self.alive) {
         if (state.players.every((p) => !p.alive)) showGameOver(self);
         else $("#game-message").textContent = "Vous êtes éliminé · observez vos coéquipiers.";
@@ -346,6 +358,11 @@
     node.textContent = text;
     clearTimeout(setMessage.timer);
     setMessage.timer = setTimeout(() => { if (node.textContent === text) node.textContent = ""; }, 4500);
+  }
+  function flashLevelUp() {
+    gameScreen.classList.remove("level-up-flash");
+    void gameScreen.offsetWidth;
+    gameScreen.classList.add("level-up-flash");
   }
   function updateInput() {
     let x = (keys.has("d") || keys.has("arrowright") ? 1 : 0) - (keys.has("a") || keys.has("arrowleft") ? 1 : 0);
@@ -402,30 +419,38 @@
   function simulate(dt) {
     game.elapsed += dt;
     game.lastFoodSpawn += dt;
-    if (game.lastFoodSpawn >= 1.5 && game.foods.length < MAX_FOOD) {
+    if (game.lastFoodSpawn >= CONFIG.balance.resources.respawnSeconds && game.foods.length < MAX_FOOD) {
       game.lastFoodSpawn = 0;
       game.foods.push(makeFood());
+    }
+    game.lastObjectSpawn += dt;
+    if (game.lastObjectSpawn >= CONFIG.balance.objects.respawnSeconds && game.objects.length < CONFIG.balance.objects.maxCount) {
+      game.lastObjectSpawn = 0;
+      game.objects.push(makeObject());
     }
     for (const p of [...game.players.values()]) {
       if (!p.connected && p.id !== "host" && game.elapsed - p.disconnectedAt > 12) {
         game.players.delete(p.id);
         continue;
       }
+      updateAbilityEffects(p);
+      if (p.alive) {
+        p.hp = Math.min(p.maxHp, p.hp + p.regeneration * dt);
+        if (p.effects.healUntil > game.elapsed) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * .12 * dt);
+      }
       if (!p.alive || p.waitingUpgrade) continue;
       p.invulnerable = Math.max(0, p.invulnerable - dt);
       const ix = p.inputX || 0, iy = p.inputY || 0;
       const magnitude = Math.hypot(ix, iy) || 1;
-      p.x = clamp(p.x + ix / magnitude * p.speed * dt, 28, WORLD - 28);
-      p.y = clamp(p.y + iy / magnitude * p.speed * dt, 28, WORLD - 28);
+      const moveSpeed = p.speed * (p.effects.dashUntil > game.elapsed ? 1.8 : 1) *
+        (p.effects.propulsionUntil > game.elapsed ? 1.25 : 1);
+      p.x = clamp(p.x + ix / magnitude * moveSpeed * dt, 28, WORLD - 28);
+      p.y = clamp(p.y + iy / magnitude * moveSpeed * dt, 28, WORLD - 28);
       collectFood(p);
       p.fireLeft -= dt;
       if (p.fireLeft <= 0) {
-        const target = nearestEnemy(p);
-        if (target) {
-          const angle = p.id === "host" || p.inputX !== undefined ? p.angle : Math.atan2(target.y - p.y, target.x - p.x);
-          spawnBullet(p, angle);
-          p.fireLeft = p.fireRate;
-        } else p.fireLeft = Math.min(p.fireLeft, .08);
+        spawnBullet(p, p.angle);
+        p.fireLeft = p.fireRate;
       }
     }
     const spawnInterval = Math.max(.38, 1.15 - game.elapsed / 240);
@@ -440,32 +465,41 @@
     if (self) renderHud(self);
     $("#player-count").textContent = `${[...game.players.values()].filter((p) => p.connected).length}`;
   }
-  function nearestEnemy(p) {
-    let found = null, distance = Infinity;
-    for (const e of game.enemies) {
-      const d = (e.x - p.x) ** 2 + (e.y - p.y) ** 2;
-      if (d < distance) { found = e; distance = d; }
-    }
-    return found;
-  }
   function spawnBullet(p, angle) {
-    const speed = 610;
-    const count = Math.max(1, Math.min(3, p.cannons || 1));
-    for (let i = 0; i < count; i++) {
-      const offset = (i - (count - 1) / 2) * 9;
-      const x = p.x + Math.cos(angle) * 20 - Math.sin(angle) * offset;
-      const y = p.y + Math.sin(angle) * 20 + Math.cos(angle) * offset;
-      game.bullets.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
-        damage: p.damage, owner: p.id, color: p.color, radius: 5, enemy: false });
+    for (const cannon of cannonLayout(p)) {
+      const direction = angle + cannon.angle;
+      if (p.evolution === "propulsion" && Math.cos(cannon.angle) < -.5) p.effects.propulsionUntil = game.elapsed + .5;
+      const x = p.x + Math.cos(direction) * 21 - Math.sin(direction) * cannon.offset;
+      const y = p.y + Math.sin(direction) * 21 + Math.cos(direction) * cannon.offset;
+      game.bullets.push({
+        x, y, vx: Math.cos(direction) * p.bulletSpeed, vy: Math.sin(direction) * p.bulletSpeed,
+        damage: p.damage, owner: p.id, color: p.color, radius: p.bulletSize, enemy: false,
+        life: p.range / p.bulletSpeed, remainingPierce: p.penetration, hitIds: [],
+        explosive: p.effects?.explosiveUntil > game.elapsed || Boolean(evolutionById.get(p.evolution)?.modifiers.explosive)
+      });
     }
+  }
+  function cannonLayout(player) {
+    const evolution = evolutionById.get(player.evolution) || evolutionById.get("basic");
+    if (evolution.radial) return Array.from({ length: evolution.radial }, (_, i) => ({ angle: i * Math.PI * 2 / evolution.radial, offset: 0 }));
+    if (evolution.rotating) return Array.from({ length: evolution.rotating }, (_, i) => ({
+      angle: game.elapsed * 1.5 + i * Math.PI * 2 / evolution.rotating, offset: 0
+    }));
+    return evolution.cannons || evolutionById.get("basic").cannons;
   }
   function makeFood() {
-    return { id: ++game.foodId, x: 35 + Math.random() * (WORLD - 70), y: 35 + Math.random() * (WORLD - 70), value: 3 };
+    return { id: ++game.foodId, x: 35 + Math.random() * (WORLD - 70), y: 35 + Math.random() * (WORLD - 70), value: CONFIG.progression.resourceXp };
+  }
+  function makeObject() {
+    return {
+      id: ++game.objectId, x: 60 + Math.random() * (WORLD - 120), y: 60 + Math.random() * (WORLD - 120),
+      hp: CONFIG.balance.objects.hp, maxHp: CONFIG.balance.objects.hp, radius: CONFIG.balance.objects.radius
+    };
   }
   function collectFood(player) {
     for (let i = game.foods.length - 1; i >= 0; i--) {
       const food = game.foods[i];
-      if (Math.hypot(player.x - food.x, player.y - food.y) < 23) {
+      if (Math.hypot(player.x - food.x, player.y - food.y) < CONFIG.balance.resources.pickupRadius) {
         game.foods.splice(i, 1);
         addXp(player, food.value);
       }
@@ -475,160 +509,309 @@
     const angle = Math.random() * Math.PI * 2;
     const target = game.players.get("host");
     const cx = target?.x || WORLD / 2, cy = target?.y || WORLD / 2;
-    const x = clamp(cx + Math.cos(angle) * 590, 25, WORLD - 25);
-    const y = clamp(cy + Math.sin(angle) * 460, 25, WORLD - 25);
-    const hp = 25 + Math.min(game.elapsed * .22, 70);
-    game.enemies.push({ id: ++game.spawnId, x, y, hp, maxHp: hp, radius: 12 + Math.random() * 5, speed: 47 + Math.random() * 19 + Math.min(game.elapsed / 40, 35), hitLeft: 0 });
+    const balance = CONFIG.balance.enemies;
+    const x = clamp(cx + Math.cos(angle) * balance.spawnDistanceX, 25, WORLD - 25);
+    const y = clamp(cy + Math.sin(angle) * balance.spawnDistanceY, 25, WORLD - 25);
+    const hp = balance.hp + Math.min(game.elapsed * balance.hpPerSecond, balance.maxBonusHp);
+    game.enemies.push({
+      id: ++game.spawnId, x, y, hp, maxHp: hp, radius: CONFIG.rewards.enemyRadius,
+      speed: balance.speed + Math.random() * balance.randomSpeed + Math.min(game.elapsed * balance.speedPerSecond, balance.maxSpeedBonus),
+      hitLeft: 0
+    });
   }
   function updateBullets(dt) {
     for (let i = game.bullets.length - 1; i >= 0; i--) {
       const b = game.bullets[i];
       b.x += b.vx * dt; b.y += b.vy * dt;
-      if (b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD) { game.bullets.splice(i, 1); continue; }
+      b.life -= dt;
+      if (b.x < 0 || b.x > WORLD || b.y < 0 || b.y > WORLD || b.life <= 0) { game.bullets.splice(i, 1); continue; }
       if (!b.enemy) {
-        const target = game.enemies.find((e) => Math.hypot(e.x - b.x, e.y - b.y) < e.radius + b.radius);
+        const target = game.enemies.find((e) => !(b.hitIds || []).includes(`enemy-${e.id}`) && Math.hypot(e.x - b.x, e.y - b.y) < e.radius + b.radius);
         if (target) {
           target.hp -= b.damage || 16;
-          game.bullets.splice(i, 1);
+          const targetX = target.x, targetY = target.y;
           if (target.hp <= 0) {
             game.enemies.splice(game.enemies.indexOf(target), 1);
             const owner = game.players.get(b.owner);
-            if (owner) { owner.kills++; addXp(owner, 1); }
+            if (owner) { owner.kills++; addXp(owner, CONFIG.progression.enemyXp); }
           }
+          if (b.explosive) {
+            explodeAt(targetX, targetY, b.damage, b.owner);
+            game.bullets.splice(i, 1);
+          } else if (b.remainingPierce > 0) {
+            b.remainingPierce--;
+            b.hitIds.push(`enemy-${target.id}`);
+          } else game.bullets.splice(i, 1);
+          continue;
+        }
+        const object = game.objects.find((item) => !(b.hitIds || []).includes(`object-${item.id}`) &&
+          Math.hypot(item.x - b.x, item.y - b.y) < item.radius + b.radius);
+        if (object) {
+          object.hp -= b.damage;
+          if (object.hp <= 0) {
+            game.objects.splice(game.objects.indexOf(object), 1);
+            const owner = game.players.get(b.owner);
+            if (owner) addXp(owner, CONFIG.progression.objectXp);
+          }
+          if (b.explosive) {
+            explodeAt(object.x, object.y, b.damage, b.owner);
+            game.bullets.splice(i, 1);
+          } else if (b.remainingPierce > 0) { b.remainingPierce--; b.hitIds.push(`object-${object.id}`); }
+          else game.bullets.splice(i, 1);
+          continue;
+        }
+        const opponent = [...game.players.values()].find((p) => p.alive && p.id !== b.owner &&
+          !(b.hitIds || []).includes(p.id) && Math.hypot(p.x - b.x, p.y - b.y) < CONFIG.balance.combat.bulletPlayerRadius + b.radius);
+        if (opponent) {
+          damagePlayer(opponent, b.damage, game.players.get(b.owner));
+          if (b.remainingPierce > 0) { b.remainingPierce--; b.hitIds.push(opponent.id); }
+          else game.bullets.splice(i, 1);
+          continue;
         }
       } else {
         const target = [...game.players.values()].find((p) => p.alive && Math.hypot(p.x - b.x, p.y - b.y) < 15);
         if (target) {
-          hurtPlayer(target, 10);
+          damagePlayer(target, CONFIG.balance.combat.enemyBulletDamage);
           game.bullets.splice(i, 1);
         }
+      }
+    }
+  }
+  function explodeAt(x, y, damage, ownerId) {
+    const owner = game.players.get(ownerId);
+    const combat = CONFIG.balance.combat;
+    for (const enemy of [...game.enemies]) {
+      if (Math.hypot(enemy.x - x, enemy.y - y) > combat.enemyRadius) continue;
+      enemy.hp -= damage * combat.explosionDamage;
+      if (enemy.hp <= 0) {
+        game.enemies.splice(game.enemies.indexOf(enemy), 1);
+        if (owner) { owner.kills++; addXp(owner, CONFIG.progression.enemyXp); }
+      }
+    }
+    for (const player of game.players.values()) {
+      if (player.id !== ownerId && player.alive && Math.hypot(player.x - x, player.y - y) < combat.enemyRadius) damagePlayer(player, damage * combat.splashPlayerDamage, owner);
+    }
+    for (const object of [...game.objects]) {
+      if (Math.hypot(object.x - x, object.y - y) > combat.enemyRadius) continue;
+      object.hp -= damage * combat.explosionDamage;
+      if (object.hp <= 0) {
+        game.objects.splice(game.objects.indexOf(object), 1);
+        if (owner) addXp(owner, CONFIG.progression.objectXp);
       }
     }
   }
   function updateEnemies(dt) {
     for (const enemy of game.enemies) {
       enemy.hitLeft = Math.max(0, enemy.hitLeft - dt);
-      const targets = [...game.players.values()].filter((p) => p.alive && (p.connected || p.id === "host"));
+      const targets = [...game.players.values()].filter((p) => p.alive && (p.connected || p.id === "host") &&
+        !(p.effects.invisibleUntil > game.elapsed));
       if (!targets.length) continue;
       let target = targets[0], min = Infinity;
       for (const p of targets) { const d = (p.x - enemy.x) ** 2 + (p.y - enemy.y) ** 2; if (d < min) { min = d; target = p; } }
       const dx = target.x - enemy.x, dy = target.y - enemy.y, dist = Math.hypot(dx, dy) || 1;
-      if (dist > 21) { enemy.x += dx / dist * enemy.speed * dt; enemy.y += dy / dist * enemy.speed * dt; }
-      else if (enemy.hitLeft <= 0) { hurtPlayer(target, 9); enemy.hitLeft = .8; }
+      const balance = CONFIG.balance.enemies;
+      if (dist > balance.contactRadius) { enemy.x += dx / dist * enemy.speed * dt; enemy.y += dy / dist * enemy.speed * dt; }
+      else if (enemy.hitLeft <= 0) { damagePlayer(target, balance.contactDamage); enemy.hitLeft = balance.contactCooldown; }
     }
   }
-  function hurtPlayer(player, damage) {
-    if (player.invulnerable > 0) return;
-    player.hp = Math.max(0, player.hp - damage);
-    player.invulnerable = .45;
+  function damagePlayer(player, damage, attacker) {
+    player.effects ||= {};
+    if (player.invulnerable > 0 || player.effects.shieldUntil > game.elapsed ||
+        player.effects.invulnerableUntil > game.elapsed) return;
+    const reducedDamage = damage * (1 - Math.min(.5, player.resistance));
+    player.hp = Math.max(0, player.hp - reducedDamage);
+    player.invulnerable = CONFIG.balance.combat.playerInvulnerabilitySeconds;
     if (player.hp <= 0) {
       player.alive = false;
-      if (player.id === "host") setMessage("Vous êtes éliminé. Vos coéquipiers continuent le combat.");
+      if (attacker && attacker.id !== player.id) {
+        attacker.kills++;
+        addXp(attacker, CONFIG.progression.killXp);
+      }
+      if (player.id === game.selfId) setMessage("Vous êtes éliminé. Vos coéquipiers continuent le combat.");
     }
+  }
+  function updateAbilityEffects(player) {
+    for (const [id, until] of Object.entries(player.abilityCooldowns || {})) {
+      if (until <= game.elapsed) delete player.abilityCooldowns[id];
+    }
+    for (const [id, until] of Object.entries(player.effects || {})) {
+      if (until <= game.elapsed) delete player.effects[id];
+    }
+  }
+  function activateAbility(player, id) {
+    const ability = CONFIG.abilities.find((item) => item.id === id);
+    if (!ability || !player.alive || player.abilityCooldowns[id] > game.elapsed) return false;
+    if (!game.isHost) {
+      const connection = game.connections.get(game.hostPeerId);
+      if (!connection?.open) return false;
+      connection.send({ type: "ability", id });
+      return true;
+    }
+    player.effects ||= {};
+    player.abilityCooldowns[id] = game.elapsed + ability.cooldown;
+    const until = game.elapsed + ability.duration;
+    if (id === "shield") player.effects.shieldUntil = until;
+    else if (id === "dash") player.effects.dashUntil = until;
+    else if (id === "heal") { player.effects.healUntil = until; player.hp = Math.min(player.maxHp, player.hp + 35); }
+    else if (id === "invisible") player.effects.invisibleUntil = until;
+    else if (id === "explosive") player.effects.explosiveUntil = until;
+    else if (id === "invulnerable") player.effects.invulnerableUntil = until;
+    else if (id === "volley") {
+      for (let i = 0; i < 16; i++) spawnBullet(player, i * Math.PI * 2 / 16);
+    } else if (id === "repel") {
+      for (const target of [...game.enemies, ...[...game.players.values()].filter((item) => item.id !== player.id && item.alive)]) {
+        const dx = target.x - player.x, dy = target.y - player.y;
+        const distance = Math.hypot(dx, dy);
+        if (distance < 220 && distance > 0) {
+          target.x = clamp(player.x + dx / distance * 240, 20, WORLD - 20);
+          target.y = clamp(player.y + dy / distance * 240, 20, WORLD - 20);
+        }
+      }
+    }
+    showToast(`${ability.name} activé`);
+    return true;
   }
   function addXp(player, amount) {
     player.xp += amount;
-    const threshold = xpForNextLevel(player);
-    if (player.xp >= threshold && !player.waitingUpgrade) {
+    while (player.level < CONFIG.progression.maxLevel && player.xp >= xpForNextLevel(player) && !player.waitingUpgrade) {
+      const threshold = xpForNextLevel(player);
       player.xp -= threshold;
       player.level++;
+      player.unspentPoints++;
       player.pendingLevels++;
+      player.pendingEvolution = CONFIG.progression.evolutionLevels.includes(player.level);
       player.waitingUpgrade = true;
-      if (player.id === "host") showUpgradeOptions();
+      recalculateStats(player);
+      if (player.id === game.selfId) {
+        flashLevelUp();
+        showUpgradeOptions();
+      }
     }
   }
   function xpForNextLevel(player) {
-    return player.level * 8;
+    const progression = CONFIG.progression;
+    return Math.round(progression.firstLevelXp + player.level * progression.perLevelXp +
+      player.level * player.level * progression.quadraticXp);
   }
-  function upgradeTier(level) {
-    return level >= 8 ? 3 : level >= 4 ? 2 : 1;
+  function recalculateStats(player) {
+    const points = player.stats || {};
+    const evolution = evolutionById.get(player.evolution) || evolutionById.get("basic");
+    const modifiers = evolution.modifiers || {};
+    const multiplier = (key) => modifiers[key] || 1;
+    const base = CONFIG.balance.player;
+    const growth = CONFIG.balance.growth;
+    const previousMax = player.maxHp || base.maxHp;
+    player.speed = base.speed * (1 + (points.speed || 0) * growth.speed) * multiplier("speed");
+    player.maxHp = Math.round(base.maxHp * (1 + (points.maxHp || 0) * growth.maxHp) * multiplier("maxHp"));
+    player.hp = Math.min(player.maxHp, player.hp + Math.max(0, player.maxHp - previousMax));
+    player.regeneration = ((points.regeneration || 0) * growth.regeneration + (points.maxHp || 0) * growth.maxHpRegeneration) * multiplier("regeneration");
+    player.damage = base.damage * (1 + (points.damage || 0) * growth.damage) * multiplier("damage");
+    player.bulletSpeed = base.bulletSpeed * (1 + (points.bulletSpeed || 0) * growth.bulletSpeed) * multiplier("bulletSpeed");
+    player.fireRate = base.fireRate / ((1 + (points.fireRate || 0) * growth.fireRate) * multiplier("fireRate"));
+    player.resistance = Math.min(base.maxResistance, (points.resistance || 0) * growth.resistance + (1 - multiplier("resistance")));
+    player.penetration = Math.floor((points.penetration || 0) / growth.penetrationPerPoint);
+    player.range = base.range * (1 + (points.range || 0) * growth.range) * multiplier("range");
+    player.bulletSize = base.bulletSize * multiplier("bulletSize");
+    player.cannons = evolution.radial || evolution.rotating || evolution.cannons?.length || 1;
   }
-  function availableUpgrades(player) {
-    return upgrades.filter((upgrade) => upgrade.minLevel <= player.level &&
-      !(upgrade.key === "doubleCannons" && player.cannons >= 2) &&
-      !(upgrade.key === "tripleCannons" && (player.cannons < 2 || player.cannons >= 3)));
+  function availableEvolutions(player) {
+    return CONFIG.evolutions.filter((item) => item.level === player.level && item.parents.includes(player.evolution));
   }
-  function upgradeChoices(player) {
-    const tier = upgradeTier(player.level);
-    const tierLevel = [0, 1, 4, 8][tier];
-    const choices = availableUpgrades(player).filter((upgrade) => upgrade.minLevel === tierLevel);
-    if (tier > 1 && player.cannons < 2) {
-      choices.push(upgrades.find((upgrade) => upgrade.key === "doubleCannons"));
-    } else if (tier === 3 && player.cannons === 2) {
-      choices.push(upgrades.find((upgrade) => upgrade.key === "tripleCannons"));
+  function evolutionStats(item) {
+    const stats = Object.entries(item.modifiers || {}).filter(([key]) => modifierLabels[key])
+      .map(([key, value]) => `${modifierLabels[key]} ×${Number(value).toFixed(2)}`);
+    if (item.modifiers?.resistance < 1) stats.push(`Résistance +${Math.round((1 - item.modifiers.resistance) * 100)} %`);
+    if (item.modifiers?.explosive) stats.push("Impacts explosifs");
+    return stats.length ? stats.join(" · ") : "Statistiques équilibrées";
+  }
+  function applyProgressionChoice(player, action, key) {
+    if (!player.waitingUpgrade) return;
+    if (action === "stat") {
+      const definition = statByKey.get(key);
+      if (!definition || player.unspentPoints <= 0 || (player.stats[key] || 0) >= definition.max) return;
+      player.stats[key] = (player.stats[key] || 0) + 1;
+      player.unspentPoints--;
+      player.pendingLevels = Math.max(0, player.pendingLevels - 1);
+      recalculateStats(player);
+    } else if (action === "evolution") {
+      if (!player.pendingEvolution || !availableEvolutions(player).some((item) => item.id === key)) return;
+      player.evolution = key;
+      player.pendingEvolution = false;
+      recalculateStats(player);
+    } else return;
+    player.waitingUpgrade = player.unspentPoints > 0 || player.pendingEvolution;
+    if (player.id === game.selfId) {
+      if (player.waitingUpgrade) showUpgradeOptions();
+      else $("#upgrade-dialog").hidden = true;
     }
-    const featuredKey = tier === 2 || (tier === 3 && player.cannons < 3)
-      ? player.cannons < 2 ? "doubleCannons" : "tripleCannons"
-      : null;
-    const featured = choices.find((upgrade) => upgrade.key === featuredKey);
-    const others = choices.filter((upgrade) => upgrade !== featured).sort(() => Math.random() - .5);
-    return featured ? [featured, ...others.slice(0, 2)] : others.slice(0, 3);
-  }
-  function applyUpgrade(player, key) {
-    if (!player.waitingUpgrade || !availableUpgrades(player).some((upgrade) => upgrade.key === key)) return;
-    if (key === "rate") player.fireRate = Math.max(.12, player.fireRate * .78);
-    if (key === "rate2") player.fireRate = Math.max(.1, player.fireRate * .7);
-    if (key === "rate3") player.fireRate = Math.max(.08, player.fireRate * .62);
-    if (key === "damage") player.damage *= 1.3;
-    if (key === "damage2") player.damage *= 1.45;
-    if (key === "damage3") player.damage *= 1.6;
-    if (key === "speed") player.speed *= 1.16;
-    if (key === "speed2") player.speed *= 1.24;
-    if (key === "speed3") player.speed *= 1.32;
-    if (key === "vitality") { player.maxHp += 30; player.hp = Math.min(player.maxHp, player.hp + 30); }
-    if (key === "vitality2") { player.maxHp += 50; player.hp = Math.min(player.maxHp, player.hp + 50); }
-    if (key === "vitality3") { player.maxHp += 80; player.hp = Math.min(player.maxHp, player.hp + 80); }
-    if (key === "doubleCannons") player.cannons = 2;
-    if (key === "tripleCannons") player.cannons = 3;
-    player.pendingLevels = Math.max(0, player.pendingLevels - 1);
-    player.waitingUpgrade = player.pendingLevels > 0;
-    if (game.isHost) {
-      if (player.id === game.selfId) {
-        if (player.waitingUpgrade) showUpgradeOptions();
-        else $("#upgrade-dialog").hidden = true;
-      }
-      if (!player.waitingUpgrade && player.xp >= xpForNextLevel(player)) addXp(player, 0);
-    } else {
-      const conn = game.connections.get(game.hostPeerId);
-      if (conn?.open) conn.send({ type: "upgrade", key });
-      if (player.id === game.selfId) $("#upgrade-dialog").hidden = true;
-    }
+    if (game.isHost && !player.waitingUpgrade && player.xp >= xpForNextLevel(player)) addXp(player, 0);
   }
   function showUpgradeOptions() {
     const dialog = $("#upgrade-dialog");
     const player = game?.players.get(game?.selfId);
     if (!player?.waitingUpgrade) { dialog.hidden = true; return; }
-    if (!dialog.hidden && $("#upgrade-options").childElementCount) return;
+    const menuKey = `${player.level}:${player.unspentPoints}:${player.pendingEvolution}:${player.evolution}:${JSON.stringify(player.stats)}`;
+    if (!dialog.hidden && game.progressionMenuKey === menuKey) return;
+    game.progressionMenuKey = menuKey;
     dialog.hidden = false;
-    const tier = upgradeTier(player.level);
-    $(".dialog-card .eyebrow").textContent = `PALIER ${["", "I", "II", "III"][tier]} · NIVEAU ${player.level}`;
-    $("#upgrade-title").textContent = `Amélioration de palier ${["", "I", "II", "III"][tier]}`;
+    const tier = player.level;
+    const heading = $("#upgrade-tier");
+    const title = $("#upgrade-title");
+    const description = $("#upgrade-description");
     const area = $("#upgrade-options");
     area.replaceChildren();
-    const choices = upgradeChoices(player);
-    for (const item of choices) {
-      const button = document.createElement("button");
-      button.className = "upgrade-choice";
-      button.innerHTML = `<strong>${item.title}</strong><span>${item.text}</span>`;
-      button.addEventListener("click", () => {
-        const player = game?.players.get(game.selfId);
-        if (!player?.waitingUpgrade) return;
-        if (game.isHost) applyUpgrade(player, item.key);
-        else applyUpgrade(player, item.key);
-      });
-      area.append(button);
+    if (player.unspentPoints > 0) {
+      heading.textContent = `POINT DE COMPÉTENCE · NIVEAU ${tier} · ${player.unspentPoints} RESTANT(S)`;
+      title.textContent = "Améliore une caractéristique";
+      description.textContent = "Chaque caractéristique est plafonnée à 10 points.";
+      for (const stat of CONFIG.stats) {
+        const value = player.stats?.[stat.key] || 0;
+        if (value >= stat.max) continue;
+        const button = document.createElement("button");
+          button.className = "upgrade-choice stat-choice";
+        button.dataset.choice = `stat:${stat.key}`;
+        button.innerHTML = `<strong>${stat.name} <span>${value}/${stat.max}</span></strong><span>${stat.description}</span><span class="stat-pips">${Array.from({ length: stat.max }, (_, i) => `<i class="${i < value ? "filled" : ""}"></i>`).join("")}</span>`;
+        area.append(button);
+      }
+    } else if (player.pendingEvolution) {
+      heading.textContent = `ÉVOLUTION · NIVEAU ${tier}`;
+      title.textContent = "Choisis ta branche";
+      description.textContent = "Ton évolution dépend de la classe précédente. Chaque canon a ses forces et ses compromis.";
+      for (const item of availableEvolutions(player)) {
+        const button = document.createElement("button");
+        button.className = "upgrade-choice evolution-choice";
+        button.dataset.choice = `evolution:${item.id}`;
+        button.innerHTML = `<span class="evolution-glyph" aria-hidden="true">${item.radial ? "✺" : item.rotating ? "⟳" : item.cannons.length > 2 ? "✣" : "⌁"}</span><strong>${item.name}</strong><span class="evolution-branch">${branchLabels[item.branch] || item.branch} · palier ${item.level}</span><span class="class-stats">${evolutionStats(item)}</span><span>+ ${item.pros}</span><span>− ${item.cons}</span>`;
+        area.append(button);
+      }
     }
+    area.querySelectorAll("[data-choice]").forEach((button) => button.addEventListener("click", () => {
+      const [action, key] = button.dataset.choice.split(":");
+      if (game.isHost) applyProgressionChoice(player, action, key);
+      else {
+        const connection = game.connections.get(game.hostPeerId);
+        if (connection?.open) connection.send({ type: "upgrade", action, key });
+      }
+    }));
     area.querySelector("button")?.focus();
   }
   function renderHud(player) {
     $("#level-value").textContent = player.level;
     const threshold = xpForNextLevel(player);
-    $("#xp-bar").style.width = `${Math.min(100, player.xp / threshold * 100)}%`;
-    $("#xp-text").textContent = `${player.xp} / ${threshold} XP`;
+    $("#xp-bar").style.width = `${player.level >= CONFIG.progression.maxLevel ? 100 : Math.min(100, player.xp / threshold * 100)}%`;
+    $("#xp-text").textContent = player.level >= CONFIG.progression.maxLevel ? "NIVEAU MAX" : `${player.xp} / ${threshold} XP`;
     $("#kill-count").textContent = player.kills;
     $("#gun-count").textContent = player.cannons || 1;
+    $("#class-value").textContent = evolutionById.get(player.evolution)?.name || "Canon simple";
     $("#health-bar").style.width = `${Math.max(0, player.hp / player.maxHp * 100)}%`;
     $("#health-text").textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+    for (const ability of CONFIG.abilities) {
+      const button = $(`[data-ability="${ability.id}"]`);
+      if (!button) continue;
+      const remaining = Math.max(0, Math.ceil((player.abilityCooldowns?.[ability.id] || 0) - game.elapsed));
+      button.disabled = remaining > 0;
+      button.querySelector(".ability-cooldown").textContent = remaining ? `${remaining}s` : ability.key;
+    }
   }
   function showGameOver(player) {
     if (game?.gameOver) return;
@@ -662,6 +845,7 @@
     for (let y = 0; y <= WORLD; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD, y); ctx.stroke(); }
     ctx.strokeStyle = "#a4ffb21f"; ctx.lineWidth = 4; ctx.strokeRect(0, 0, WORLD, WORLD);
     for (const food of game.foods) drawFood(food);
+    for (const object of game.objects) drawObject(object);
     for (const e of game.enemies) drawEnemy(e);
     for (const b of game.bullets) {
       ctx.beginPath(); ctx.fillStyle = b.color || "#ff7180"; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 12;
@@ -679,13 +863,31 @@
     ctx.shadowColor = "#d3ff6a";
     ctx.shadowBlur = 12;
     ctx.beginPath();
-    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.arc(0, 0, CONFIG.balance.resources.visualRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#fff8c8";
     ctx.beginPath();
-    ctx.arc(-1.5, -1.5, 2, 0, Math.PI * 2);
+    ctx.arc(-1.5, -1.5, CONFIG.balance.resources.visualRadius / 3, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+  function drawObject(object) {
+    ctx.save();
+    ctx.translate(object.x, object.y);
+    ctx.fillStyle = "#b983ff";
+    ctx.shadowColor = "#9c6cff";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.roundRect(-object.radius, -object.radius, object.radius * 2, object.radius * 2, 5);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#efe4ff";
+    ctx.fillRect(-3, -3, 6, 6);
+    ctx.fillStyle = "#252033";
+    ctx.fillRect(-object.radius, -object.radius - 6, object.radius * 2, 3);
+    ctx.fillStyle = "#c8a9ff";
+    ctx.fillRect(-object.radius, -object.radius - 6, object.radius * 2 * Math.max(0, object.hp / object.maxHp), 3);
     ctx.restore();
   }
   function drawEnemy(e) {
@@ -697,20 +899,47 @@
   }
   function drawPlayer(p) {
     ctx.save(); ctx.translate(p.x, p.y);
+    if (p.effects?.invisibleUntil > game.elapsed) ctx.globalAlpha = .22;
     ctx.beginPath(); ctx.fillStyle = p.invulnerable > 0 && Math.floor(game.elapsed * 16) % 2 ? "#ffffff" : p.color;
     ctx.shadowColor = p.color; ctx.shadowBlur = p.id === game.selfId ? 22 : 10;
     ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     ctx.rotate(p.angle); ctx.fillStyle = "#f4f4ed";
-    const cannons = Math.max(1, Math.min(3, p.cannons || 1));
-    for (let i = 0; i < cannons; i++) {
-      const offset = (i - (cannons - 1) / 2) * 7;
-      ctx.beginPath(); ctx.roundRect(2, offset - 2, 19, 4, 2); ctx.fill();
+    const evolution = evolutionById.get(p.evolution) || evolutionById.get("basic");
+    const layouts = evolution.rotating
+      ? Array.from({ length: 4 }, (_, i) => ({ angle: game.elapsed * 1.5 + i * Math.PI / 2, offset: 0 }))
+      : evolution.radial
+        ? Array.from({ length: evolution.radial }, (_, i) => ({ angle: i * Math.PI * 2 / evolution.radial, offset: 0 }))
+        : cannonLayout(p);
+    for (const cannon of layouts) {
+      ctx.save();
+      ctx.translate(0, cannon.offset || 0);
+      ctx.rotate(cannon.angle || 0);
+      ctx.beginPath(); ctx.roundRect(2, -2.5, 21, 5, 2); ctx.fill();
+      ctx.fillStyle = "#bdf7ff";
+      ctx.fillRect(20, -1.5, 4, 3);
+      ctx.fillStyle = "#f4f4ed";
+      ctx.restore();
     }
     ctx.restore();
     ctx.font = "10px Manrope"; ctx.textAlign = "center"; ctx.fillStyle = p.id === game.selfId ? "#eaffeb" : "#d4dbea";
     ctx.fillText(p.id === "host" ? "Hôte" : (p.id === game.selfId ? "Vous" : p.name || "Invité"), p.x, p.y - 22);
     ctx.fillStyle = "#303849"; ctx.fillRect(p.x - 13, p.y + 17, 26, 3);
     ctx.fillStyle = p.color; ctx.fillRect(p.x - 13, p.y + 17, 26 * Math.max(0, p.hp / p.maxHp), 3);
+  }
+
+  for (const ability of CONFIG.abilities) {
+    const button = document.createElement("button");
+    button.className = "ability-button";
+    button.type = "button";
+    button.dataset.ability = ability.id;
+    button.title = `${ability.name} — ${ability.description} (touche ${ability.key})`;
+    button.setAttribute("aria-label", button.title);
+    button.innerHTML = `<span class="ability-key">${ability.key}</span><span>${ability.name}</span><span class="ability-cooldown">${ability.key}</span>`;
+    button.addEventListener("click", () => {
+      const player = game?.players.get(game.selfId);
+      if (player) activateAbility(player, ability.id);
+    });
+    $("#ability-bar").append(button);
   }
 
   $("#solo-button").addEventListener("click", startSolo);
@@ -733,6 +962,12 @@
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
     const movementKey = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key);
+    if (/^[1-8]$/.test(key) && game && !gameScreen.hidden && $("#upgrade-dialog").hidden) {
+      const player = game.players.get(game.selfId);
+      if (player) activateAbility(player, CONFIG.abilities[Number(key) - 1].id);
+      event.preventDefault();
+      return;
+    }
     if (game && !gameScreen.hidden && movementKey) {
       if (key.startsWith("arrow")) event.preventDefault();
       keys.add(key);

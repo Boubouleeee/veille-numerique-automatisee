@@ -27,7 +27,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: node --check game.js
+      - run: |
+          node --check game-config.js
+          node --check game.js
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact
