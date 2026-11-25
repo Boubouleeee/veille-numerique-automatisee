@@ -582,14 +582,16 @@
     if (key === "tripleCannons") player.cannons = 3;
     player.pendingLevels = Math.max(0, player.pendingLevels - 1);
     player.waitingUpgrade = player.pendingLevels > 0;
-    if (player.id === "host") {
-      if (player.waitingUpgrade) showUpgradeOptions();
-      else $("#upgrade-dialog").hidden = true;
+    if (game.isHost) {
+      if (player.id === game.selfId) {
+        if (player.waitingUpgrade) showUpgradeOptions();
+        else $("#upgrade-dialog").hidden = true;
+      }
       if (!player.waitingUpgrade && player.xp >= xpForNextLevel(player)) addXp(player, 0);
     } else {
       const conn = game.connections.get(game.hostPeerId);
       if (conn?.open) conn.send({ type: "upgrade", key });
-      $("#upgrade-dialog").hidden = true;
+      if (player.id === game.selfId) $("#upgrade-dialog").hidden = true;
     }
   }
   function showUpgradeOptions() {
