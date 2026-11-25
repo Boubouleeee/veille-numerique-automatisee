@@ -15,7 +15,7 @@
     <div class="home-card">
       <div class="eyebrow"><span class="live-dot"></span> JEU COOPÉRATIF · JUSQU'À 16 JOUEURS</div>
       <h1>Survivants<br><span>d'Arène</span></h1>
-      <p class="intro">Une nuée sans fin, une petite arène, et vos amis à vos côtés. Tenez bon, gagnez des niveaux et choisissez comment devenir plus fort.</p>
+      <p class="intro">Une nuée sans fin, une petite arène, et vos amis à vos côtés. Ramassez la nourriture pour gagner de l'EXP, tenez bon et débloquez de meilleures améliorations à chaque palier.</p>
       <div class="home-actions">
         <button id="solo-button" class="button button-muted">Jouer en solo</button>
         <button id="create-button" class="button button-primary">Créer une salle <span aria-hidden="true">→</span></button>
@@ -54,16 +54,17 @@
       <div class="xp-wrap"><div class="xp-track"><div id="xp-bar" class="xp-bar"></div></div><span id="xp-text">0 / 8 XP</span></div>
       <div class="hud-stat"><span class="hud-label">SURVIVANTS</span><strong id="player-count">1</strong></div>
       <div class="hud-stat"><span class="hud-label">ÉLIMINATIONS</span><strong id="kill-count">0</strong></div>
+      <div class="hud-stat"><span class="hud-label">CANONS</span><strong id="gun-count">1</strong></div>
     </section>
     <div class="health-wrap"><span>VIE</span><div class="health-track"><div id="health-bar" class="health-bar"></div></div><b id="health-text">100 / 100</b></div>
     <div id="game-message" class="game-message" role="status" aria-live="polite"></div>
-    <div class="game-controls"><kbd>WASD</kbd> / <kbd>↑↓←→</kbd> bouger <span>·</span> souris viser <span>·</span> tir auto</div>
+    <div class="game-controls"><kbd>WASD</kbd> / <kbd>↑↓←→</kbd> bouger <span>·</span> souris viser <span>·</span> tir auto <span>·</span> orbes lumineuses = EXP</div>
     <div class="touch-pad touch-move" aria-hidden="true"><span>GLISSER<br>BOUGER</span></div>
     <div class="touch-pad touch-aim" aria-hidden="true"><span>GLISSER<br>VISER</span></div>
     <aside id="upgrade-dialog" class="overlay" hidden>
       <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
-        <div class="eyebrow">NOUVEAU NIVEAU</div><h2 id="upgrade-title">Choisissez une amélioration</h2>
-        <p>La nuée n'attend pas. Renforcez votre survivant.</p>
+        <div class="eyebrow">NOUVEAU PALIER</div><h2 id="upgrade-title">Choisissez une amélioration</h2>
+        <p>Les améliorations deviennent plus puissantes à mesure que vous montez de niveau.</p>
         <div id="upgrade-options" class="upgrade-options"></div>
       </div>
     </aside>

@@ -9,13 +9,24 @@
   const status = $("#home-status");
   const roomInput = $("#room-code");
   const upgrades = [
-    { key: "rate", title: "Cadence éclair", text: "Tir 22 % plus rapide." },
-    { key: "damage", title: "Munitions lourdes", text: "Inflige 30 % de dégâts en plus." },
-    { key: "speed", title: "Pas vif", text: "Déplacement 16 % plus rapide." },
-    { key: "vitality", title: "Cœur solide", text: "+30 vie max. et récupère 30 vie." }
+    { key: "rate", minLevel: 1, title: "Cadence éclair", text: "Tir 22 % plus rapide." },
+    { key: "damage", minLevel: 1, title: "Munitions lourdes", text: "Inflige 30 % de dégâts en plus." },
+    { key: "speed", minLevel: 1, title: "Pas vif", text: "Déplacement 16 % plus rapide." },
+    { key: "vitality", minLevel: 1, title: "Cœur solide", text: "+30 vie max. et récupère 30 vie." },
+    { key: "doubleCannons", minLevel: 4, title: "Double canons", text: "Tire deux boulettes à chaque salve." },
+    { key: "rate2", minLevel: 4, title: "Surcadence", text: "Tir 30 % plus rapide." },
+    { key: "damage2", minLevel: 4, title: "Boulettes renforcées", text: "Inflige 45 % de dégâts en plus." },
+    { key: "speed2", minLevel: 4, title: "Turbo", text: "Déplacement 24 % plus rapide." },
+    { key: "vitality2", minLevel: 4, title: "Réserve renforcée", text: "+50 vie max. et récupère 50 vie." },
+    { key: "tripleCannons", minLevel: 8, title: "Triple canons", text: "Ajoute un troisième canon." },
+    { key: "rate3", minLevel: 8, title: "Cadence extrême", text: "Tir 38 % plus rapide." },
+    { key: "damage3", minLevel: 8, title: "Boulettes surpuissantes", text: "Inflige 60 % de dégâts en plus." },
+    { key: "speed3", minLevel: 8, title: "Vitesse supersonique", text: "Déplacement 32 % plus rapide." },
+    { key: "vitality3", minLevel: 8, title: "Cœur colossal", text: "+80 vie max. et récupère 80 vie." }
   ];
   const colors = ["#a4ffb2", "#ffcb70", "#8bd8ff", "#ff90ab", "#c5a4ff", "#ffe67b", "#78e4d1", "#ffac74"];
   const WORLD = 1800;
+  const MAX_FOOD = 140;
   let game = null;
   let animationId = 0;
   let previousTime = 0;
@@ -57,15 +68,16 @@
   const makePlayer = (id, name, color) => ({
     id, name, color, x: WORLD / 2 + (Math.random() - .5) * 90, y: WORLD / 2 + (Math.random() - .5) * 90,
     angle: 0, hp: 100, maxHp: 100, speed: 220, damage: 16, fireRate: .36, fireLeft: .1,
-    xp: 0, level: 1, kills: 0, alive: true, invulnerable: 0, waitingUpgrade: false, pendingLevels: 0, connected: true
+    xp: 0, level: 1, kills: 0, cannons: 1, alive: true, invulnerable: 0, waitingUpgrade: false, pendingLevels: 0, connected: true
   });
   const createGame = ({ mode, code = "", host = false, peer = null }) => {
     game = {
       mode, code, isHost: host, peer, selfId: host || mode === "solo" ? "host" : "",
-      players: new Map(), enemies: [], bullets: [], lastSpawn: 0, elapsed: 0, spawnId: 0,
+      players: new Map(), enemies: [], bullets: [], foods: [], lastFoodSpawn: 0, foodId: 0, lastSpawn: 0, elapsed: 0, spawnId: 0,
       snapshotTimer: 0, lastInputSend: 0, connections: new Map(), closed: false, hostPeerId: peerId(code),
       joining: false, gameOver: false, localInput: inputState
     };
+    for (let i = 0; i < MAX_FOOD; i++) game.foods.push(makeFood());
     if (host || mode === "solo") game.players.set("host", makePlayer("host", "Hôte", colors[0]));
     updateRoomLabel();
     $("#gameover-dialog").hidden = true;
@@ -297,10 +309,11 @@
       players: [...game.players.values()].map((p) => ({
         id: p.id, name: p.name, color: p.color, x: p.x, y: p.y, angle: p.angle, hp: p.hp, maxHp: p.maxHp,
         xp: p.xp, level: p.level, kills: p.kills, alive: p.alive, waitingUpgrade: p.waitingUpgrade,
-        pendingLevels: p.pendingLevels, connected: p.connected
+        pendingLevels: p.pendingLevels, connected: p.connected, cannons: p.cannons
       })),
       enemies: game.enemies.map((e) => ({ id: e.id, x: e.x, y: e.y, hp: e.hp, maxHp: e.maxHp, radius: e.radius })),
       bullets: game.bullets.map((b) => ({ x: b.x, y: b.y, vx: b.vx, vy: b.vy, color: b.color, enemy: b.enemy, radius: b.radius })),
+      foods: game.foods.map((food) => ({ id: food.id, x: food.x, y: food.y, value: food.value })),
       spawnId: game.spawnId
     };
   }
@@ -311,6 +324,7 @@
     for (const id of [...game.players.keys()]) if (!state.players.some((p) => p.id === id)) game.players.delete(id);
     game.enemies = Array.isArray(state.enemies) ? state.enemies : [];
     game.bullets = Array.isArray(state.bullets) ? state.bullets : [];
+    game.foods = Array.isArray(state.foods) ? state.foods : [];
     game.spawnId = state.spawnId || 0;
     const self = game.players.get(game.selfId);
     if (self) {
@@ -385,6 +399,11 @@
   }
   function simulate(dt) {
     game.elapsed += dt;
+    game.lastFoodSpawn += dt;
+    if (game.lastFoodSpawn >= 1.5 && game.foods.length < MAX_FOOD) {
+      game.lastFoodSpawn = 0;
+      game.foods.push(makeFood());
+    }
     for (const p of [...game.players.values()]) {
       if (!p.connected && p.id !== "host" && game.elapsed - p.disconnectedAt > 12) {
         game.players.delete(p.id);
@@ -396,6 +415,7 @@
       const magnitude = Math.hypot(ix, iy) || 1;
       p.x = clamp(p.x + ix / magnitude * p.speed * dt, 28, WORLD - 28);
       p.y = clamp(p.y + iy / magnitude * p.speed * dt, 28, WORLD - 28);
+      collectFood(p);
       p.fireLeft -= dt;
       if (p.fireLeft <= 0) {
         const target = nearestEnemy(p);
@@ -428,8 +448,26 @@
   }
   function spawnBullet(p, angle) {
     const speed = 610;
-    game.bullets.push({ x: p.x + Math.cos(angle) * 20, y: p.y + Math.sin(angle) * 20, vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed, damage: p.damage, owner: p.id, color: p.color, radius: 5, enemy: false });
+    const count = Math.max(1, Math.min(3, p.cannons || 1));
+    for (let i = 0; i < count; i++) {
+      const offset = (i - (count - 1) / 2) * 9;
+      const x = p.x + Math.cos(angle) * 20 - Math.sin(angle) * offset;
+      const y = p.y + Math.sin(angle) * 20 + Math.cos(angle) * offset;
+      game.bullets.push({ x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed,
+        damage: p.damage, owner: p.id, color: p.color, radius: 5, enemy: false });
+    }
+  }
+  function makeFood() {
+    return { id: ++game.foodId, x: 35 + Math.random() * (WORLD - 70), y: 35 + Math.random() * (WORLD - 70), value: 3 };
+  }
+  function collectFood(player) {
+    for (let i = game.foods.length - 1; i >= 0; i--) {
+      const food = game.foods[i];
+      if (Math.hypot(player.x - food.x, player.y - food.y) < 23) {
+        game.foods.splice(i, 1);
+        addXp(player, food.value);
+      }
+    }
   }
   function spawnEnemy() {
     const angle = Math.random() * Math.PI * 2;
@@ -488,7 +526,7 @@
   }
   function addXp(player, amount) {
     player.xp += amount;
-    const threshold = player.level * 8;
+    const threshold = xpForNextLevel(player);
     if (player.xp >= threshold && !player.waitingUpgrade) {
       player.xp -= threshold;
       player.level++;
@@ -497,17 +535,55 @@
       if (player.id === "host") showUpgradeOptions();
     }
   }
+  function xpForNextLevel(player) {
+    return player.level * 8;
+  }
+  function upgradeTier(level) {
+    return level >= 8 ? 3 : level >= 4 ? 2 : 1;
+  }
+  function availableUpgrades(player) {
+    return upgrades.filter((upgrade) => upgrade.minLevel <= player.level &&
+      !(upgrade.key === "doubleCannons" && player.cannons >= 2) &&
+      !(upgrade.key === "tripleCannons" && (player.cannons < 2 || player.cannons >= 3)));
+  }
+  function upgradeChoices(player) {
+    const tier = upgradeTier(player.level);
+    const tierLevel = [0, 1, 4, 8][tier];
+    const choices = availableUpgrades(player).filter((upgrade) => upgrade.minLevel === tierLevel);
+    if (tier > 1 && player.cannons < 2) {
+      choices.push(upgrades.find((upgrade) => upgrade.key === "doubleCannons"));
+    } else if (tier === 3 && player.cannons === 2) {
+      choices.push(upgrades.find((upgrade) => upgrade.key === "tripleCannons"));
+    }
+    const featuredKey = tier === 2 || (tier === 3 && player.cannons < 3)
+      ? player.cannons < 2 ? "doubleCannons" : "tripleCannons"
+      : null;
+    const featured = choices.find((upgrade) => upgrade.key === featuredKey);
+    const others = choices.filter((upgrade) => upgrade !== featured).sort(() => Math.random() - .5);
+    return featured ? [featured, ...others.slice(0, 2)] : others.slice(0, 3);
+  }
   function applyUpgrade(player, key) {
-    if (!upgrades.some((u) => u.key === key)) return;
+    if (!player.waitingUpgrade || !availableUpgrades(player).some((upgrade) => upgrade.key === key)) return;
     if (key === "rate") player.fireRate = Math.max(.12, player.fireRate * .78);
+    if (key === "rate2") player.fireRate = Math.max(.1, player.fireRate * .7);
+    if (key === "rate3") player.fireRate = Math.max(.08, player.fireRate * .62);
     if (key === "damage") player.damage *= 1.3;
+    if (key === "damage2") player.damage *= 1.45;
+    if (key === "damage3") player.damage *= 1.6;
     if (key === "speed") player.speed *= 1.16;
+    if (key === "speed2") player.speed *= 1.24;
+    if (key === "speed3") player.speed *= 1.32;
     if (key === "vitality") { player.maxHp += 30; player.hp = Math.min(player.maxHp, player.hp + 30); }
+    if (key === "vitality2") { player.maxHp += 50; player.hp = Math.min(player.maxHp, player.hp + 50); }
+    if (key === "vitality3") { player.maxHp += 80; player.hp = Math.min(player.maxHp, player.hp + 80); }
+    if (key === "doubleCannons") player.cannons = 2;
+    if (key === "tripleCannons") player.cannons = 3;
     player.pendingLevels = Math.max(0, player.pendingLevels - 1);
     player.waitingUpgrade = player.pendingLevels > 0;
     if (player.id === "host") {
       if (player.waitingUpgrade) showUpgradeOptions();
       else $("#upgrade-dialog").hidden = true;
+      if (!player.waitingUpgrade && player.xp >= xpForNextLevel(player)) addXp(player, 0);
     } else {
       const conn = game.connections.get(game.hostPeerId);
       if (conn?.open) conn.send({ type: "upgrade", key });
@@ -516,12 +592,17 @@
   }
   function showUpgradeOptions() {
     const dialog = $("#upgrade-dialog");
-    if (!game || !game.players.get(game.selfId)?.waitingUpgrade) { dialog.hidden = true; return; }
+    const player = game?.players.get(game?.selfId);
+    if (!player?.waitingUpgrade) { dialog.hidden = true; return; }
     if (!dialog.hidden && $("#upgrade-options").childElementCount) return;
     dialog.hidden = false;
+    const tier = upgradeTier(player.level);
+    $(".dialog-card .eyebrow").textContent = `PALIER ${["", "I", "II", "III"][tier]} · NIVEAU ${player.level}`;
+    $("#upgrade-title").textContent = `Amélioration de palier ${["", "I", "II", "III"][tier]}`;
     const area = $("#upgrade-options");
     area.replaceChildren();
-    for (const item of upgrades) {
+    const choices = upgradeChoices(player);
+    for (const item of choices) {
       const button = document.createElement("button");
       button.className = "upgrade-choice";
       button.innerHTML = `<strong>${item.title}</strong><span>${item.text}</span>`;
@@ -537,10 +618,11 @@
   }
   function renderHud(player) {
     $("#level-value").textContent = player.level;
-    const threshold = player.level * 8;
+    const threshold = xpForNextLevel(player);
     $("#xp-bar").style.width = `${Math.min(100, player.xp / threshold * 100)}%`;
     $("#xp-text").textContent = `${player.xp} / ${threshold} XP`;
     $("#kill-count").textContent = player.kills;
+    $("#gun-count").textContent = player.cannons || 1;
     $("#health-bar").style.width = `${Math.max(0, player.hp / player.maxHp * 100)}%`;
     $("#health-text").textContent = `${Math.ceil(player.hp)} / ${player.maxHp}`;
   }
@@ -575,6 +657,7 @@
     for (let x = 0; x <= WORLD; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD); ctx.stroke(); }
     for (let y = 0; y <= WORLD; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD, y); ctx.stroke(); }
     ctx.strokeStyle = "#a4ffb21f"; ctx.lineWidth = 4; ctx.strokeRect(0, 0, WORLD, WORLD);
+    for (const food of game.foods) drawFood(food);
     for (const e of game.enemies) drawEnemy(e);
     for (const b of game.bullets) {
       ctx.beginPath(); ctx.fillStyle = b.color || "#ff7180"; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 12;
@@ -584,6 +667,22 @@
     ctx.restore();
     const alive = [...game.players.values()].filter((p) => p.alive).length;
     if (!alive && !game.gameOver) showGameOver(self);
+  }
+  function drawFood(food) {
+    ctx.save();
+    ctx.translate(food.x, food.y);
+    ctx.fillStyle = "#d3ff6a";
+    ctx.shadowColor = "#d3ff6a";
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#fff8c8";
+    ctx.beginPath();
+    ctx.arc(-1.5, -1.5, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
   function drawEnemy(e) {
     ctx.beginPath(); ctx.fillStyle = "#ff7584"; ctx.shadowColor = "#ff536b"; ctx.shadowBlur = 14;
@@ -597,7 +696,12 @@
     ctx.beginPath(); ctx.fillStyle = p.invulnerable > 0 && Math.floor(game.elapsed * 16) % 2 ? "#ffffff" : p.color;
     ctx.shadowColor = p.color; ctx.shadowBlur = p.id === game.selfId ? 22 : 10;
     ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
-    ctx.rotate(p.angle); ctx.fillStyle = "#f4f4ed"; ctx.beginPath(); ctx.roundRect(2, -3, 18, 6, 3); ctx.fill();
+    ctx.rotate(p.angle); ctx.fillStyle = "#f4f4ed";
+    const cannons = Math.max(1, Math.min(3, p.cannons || 1));
+    for (let i = 0; i < cannons; i++) {
+      const offset = (i - (cannons - 1) / 2) * 7;
+      ctx.beginPath(); ctx.roundRect(2, offset - 2, 19, 4, 2); ctx.fill();
+    }
     ctx.restore();
     ctx.font = "10px Manrope"; ctx.textAlign = "center"; ctx.fillStyle = p.id === game.selfId ? "#eaffeb" : "#d4dbea";
     ctx.fillText(p.id === "host" ? "Hôte" : (p.id === game.selfId ? "Vous" : p.name || "Invité"), p.x, p.y - 22);
@@ -624,8 +728,13 @@
   });
   window.addEventListener("keydown", (event) => {
     const key = event.key.toLowerCase();
+    const movementKey = ["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key);
+    if (game && !gameScreen.hidden && movementKey) {
+      if (key.startsWith("arrow")) event.preventDefault();
+      keys.add(key);
+      return;
+    }
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key) && gameScreen.contains(document.activeElement)) event.preventDefault();
-    if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) keys.add(key);
   });
   window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
   window.addEventListener("blur", () => keys.clear());

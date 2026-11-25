@@ -6,7 +6,8 @@ Jeu d'action coopératif en français, jouable directement dans un navigateur mo
 
 - **Solo :** ouvrez `index.html` dans un navigateur ou publiez le dépôt sur GitHub Pages.
 - **Multijoueur :** cliquez sur **Créer une salle**, puis partagez le code ou le lien généré. Les autres joueurs peuvent ouvrir le lien ou saisir le code. Une salle accepte jusqu'à 16 joueurs, hôte compris.
-- **Commandes :** déplacement avec `WASD` ou les flèches, visée à la souris/au trackpad. Sur écran tactile, faites glisser à gauche pour bouger et à droite pour viser. Le tir est automatique. À chaque niveau, choisissez une amélioration.
+- **Commandes :** déplacement avec `WASD` ou les flèches, visée à la souris/au trackpad. Sur écran tactile, faites glisser à gauche pour bouger et à droite pour viser. Le tir est automatique ; les flèches ne font pas défiler la page en partie.
+- **Progression :** ramassez les orbes lumineuses immobiles pour gagner de l'EXP, en plus de celle gagnée en éliminant des ennemis. Les choix d'amélioration suivent trois paliers : niveau 1 (améliorations de base), niveau 4 (dont les doubles canons), puis niveau 8 (dont les triples canons et les améliorations les plus puissantes). Les orbes réapparaissent au fil du match.
 
 ## Lancer localement
 
@@ -24,7 +25,7 @@ Le workflow `.github/workflows/pages.yml` publie automatiquement le contenu du d
 
 ## Vérifications
 
-- Ouvrir la page et tester le mode solo, les déplacements, les tirs, dégâts ennemis, progression et améliorations.
+- Ouvrir la page et tester le mode solo, les déplacements (dont les flèches sans défilement), les tirs, la collecte d'orbes, la progression et les améliorations des niveaux 1, 4 et 8.
 - Ouvrir la page dans deux navigateurs/appareils connectés à Internet, créer une salle depuis l'un et rejoindre son lien depuis l'autre.
 - Tester une reconnexion après interruption brève, la sortie d'un joueur et l'accueil à 16 joueurs.
 - Pour le déploiement, vérifier le résultat de **Actions → Deploy to GitHub Pages**, puis ouvrir l'URL de Pages du dépôt.
