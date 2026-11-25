@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <meta name="description" content="Survivants d'Arène : un jeu d'action coopératif jouable dans votre navigateur.">
+  <title>Survivants d'Arène — la nuée approche</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" defer></script>
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <main id="home" class="screen home-screen">
+    <div class="home-card">
+      <div class="eyebrow"><span class="live-dot"></span> JEU COOPÉRATIF · JUSQU'À 16 JOUEURS</div>
+      <h1>Survivants<br><span>d'Arène</span></h1>
+      <p class="intro">Une nuée sans fin, une petite arène, et vos amis à vos côtés. Tenez bon, gagnez des niveaux et choisissez comment devenir plus fort.</p>
+      <div class="home-actions">
+        <button id="solo-button" class="button button-muted">Jouer en solo</button>
+        <button id="create-button" class="button button-primary">Créer une salle <span aria-hidden="true">→</span></button>
+      </div>
+      <form id="join-form" class="join-form">
+        <label for="room-code">Ou rejoindre avec un code</label>
+        <div class="join-row">
+          <input id="room-code" name="room" maxlength="6" autocomplete="off" placeholder="ABC123" aria-describedby="room-help">
+          <button class="button button-outline" type="submit">Rejoindre</button>
+        </div>
+        <small id="room-help">Le code ou lien est fourni par la personne qui héberge la partie.</small>
+      </form>
+      <div id="home-status" class="status" role="status" aria-live="polite"></div>
+      <div class="controls-hint">
+        <span><kbd>WASD</kbd> / <kbd>↑↓←→</kbd> se déplacer</span>
+        <span><kbd>Souris</kbd> viser · tir automatique</span>
+      </div>
+      <details class="limits">
+        <summary>Comment fonctionne le multijoueur ?</summary>
+        <p>Les salles sont privées et accessibles par invitation. La partie est simulée par le navigateur de l'hôte et les joueurs communiquent directement en pair-à-pair, via PeerJS pour établir la connexion. Il n'y a ni liste publique de salles, ni serveur de jeu permanent : l'hôte doit rester connecté. Les réseaux stricts peuvent empêcher la connexion (aucun relais TURN n'est fourni). L'hôte contrôle la simulation ; ce mode sans serveur dédié n'offre pas de protection anti-triche.</p>
+      </details>
+    </div>
+    <div class="home-orbit orbit-one"></div>
+    <div class="home-orbit orbit-two"></div>
+  </main>
+
+  <main id="game-screen" class="screen game-screen" hidden>
+    <canvas id="arena" aria-label="Arène de jeu. Déplacez-vous avec WASD ou les flèches et visez avec la souris."></canvas>
+    <header class="game-top">
+      <div class="brand-mark">SA<span> / </span>ARÈNE</div>
+      <div class="room-pill"><span id="connection-dot" class="live-dot"></span><span id="room-label">Partie solo</span><button id="copy-link" class="copy-button" title="Copier le lien d'invitation" aria-label="Copier le lien d'invitation">Copier</button></div>
+      <button id="leave-button" class="leave-button">Quitter</button>
+    </header>
+    <section class="hud" aria-live="polite">
+      <div class="hud-stat"><span class="hud-label">NIVEAU</span><strong id="level-value">1</strong></div>
+      <div class="xp-wrap"><div class="xp-track"><div id="xp-bar" class="xp-bar"></div></div><span id="xp-text">0 / 8 XP</span></div>
+      <div class="hud-stat"><span class="hud-label">SURVIVANTS</span><strong id="player-count">1</strong></div>
+      <div class="hud-stat"><span class="hud-label">ÉLIMINATIONS</span><strong id="kill-count">0</strong></div>
+    </section>
+    <div class="health-wrap"><span>VIE</span><div class="health-track"><div id="health-bar" class="health-bar"></div></div><b id="health-text">100 / 100</b></div>
+    <div id="game-message" class="game-message" role="status" aria-live="polite"></div>
+    <div class="game-controls"><kbd>WASD</kbd> / <kbd>↑↓←→</kbd> bouger <span>·</span> souris viser <span>·</span> tir auto</div>
+    <div class="touch-pad touch-move" aria-hidden="true"><span>GLISSER<br>BOUGER</span></div>
+    <div class="touch-pad touch-aim" aria-hidden="true"><span>GLISSER<br>VISER</span></div>
+    <aside id="upgrade-dialog" class="overlay" hidden>
+      <div class="dialog-card" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
+        <div class="eyebrow">NOUVEAU NIVEAU</div><h2 id="upgrade-title">Choisissez une amélioration</h2>
+        <p>La nuée n'attend pas. Renforcez votre survivant.</p>
+        <div id="upgrade-options" class="upgrade-options"></div>
+      </div>
+    </aside>
+    <aside id="gameover-dialog" class="overlay" hidden>
+      <div class="dialog-card gameover-card" role="dialog" aria-modal="true" aria-labelledby="gameover-title">
+        <div class="eyebrow">FIN DE PARTIE</div><h2 id="gameover-title">La nuée a gagné… cette fois.</h2>
+        <p id="final-score"></p><button id="restart-button" class="button button-primary">Retour à l'accueil</button>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>
