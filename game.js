@@ -48,12 +48,14 @@
   const showGame = () => {
     home.hidden = true;
     gameScreen.hidden = false;
+    document.body.classList.add("in-game");
     resizeCanvas();
     canvas.focus?.();
   };
   const showHome = () => {
     gameScreen.hidden = true;
     home.hidden = false;
+    document.body.classList.remove("in-game");
     $("#upgrade-dialog").hidden = true;
     $("#gameover-dialog").hidden = true;
     $("#home-status").textContent = "";

@@ -11,7 +11,9 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 body { margin: 0; min-width: 320px; min-height: 100vh; color: var(--ink); background: #101522; }
+body.in-game { overflow: hidden; }
 button, input { font: inherit; }
 button { cursor: pointer; }
 .screen { min-height: 100vh; }
